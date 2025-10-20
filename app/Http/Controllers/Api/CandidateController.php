@@ -16,11 +16,25 @@ class CandidateController extends Controller
         return Candidate::with('category')->get();
     }
 
-    public function store(Request $request)
+public function store(Request $request)
 {
     try {
         Log::info('CandidateController@store called');
 
+        // ✅ Vérification que l'utilisateur est connecté
+        $user = Auth::user();
+        if (!$user) {
+            Log::warning('No authenticated user detected');
+            return response()->json(['message' => 'Unauthorized. No authenticated user.'], 401);
+        }
+
+        // ✅ Vérification du rôle admin
+        if ($user->role !== 'admin') {
+            Log::warning('Access denied. User is not admin.', ['user_id' => $user->id, 'role' => $user->role]);
+            return response()->json(['message' => 'Access denied. Only admin can create candidates.'], 403);
+        }
+
+        // ✅ Validation des données
         $validated = $request->validate([
             'category_id'      => 'required|exists:categories,id',
             'first_name'       => 'required|string|max:255',
@@ -35,6 +49,7 @@ class CandidateController extends Controller
 
         Log::info('Validation passed', ['validated' => $validated]);
 
+        // ✅ Gestion du fichier photo
         if ($request->hasFile('photo')) {
             Log::info('Photo file detected');
             $path = $request->file('photo')->store('candidates', 'public');
@@ -42,23 +57,18 @@ class CandidateController extends Controller
             Log::info('Photo stored at: '.$path);
         }
 
+        // ✅ Encodage des liens sociaux
         if (isset($validated['social_links'])) {
             $validated['social_links'] = json_encode($validated['social_links'], JSON_UNESCAPED_UNICODE);
             Log::info('social_links encoded', ['social_links' => $validated['social_links']]);
         }
 
-        $userId = Auth::id();
-        Log::info('Auth user id', ['id' => $userId]);
-
-        if (!$userId) {
-            Log::warning('No authenticated user detected');
-            return response()->json(['message' => 'Unauthorized. No authenticated user.'], 401);
-        }
-
-        $validated['created_by'] = $userId;
+        // ✅ Ajout du créateur
+        $validated['created_by'] = $user->id;
 
         Log::info('Creating candidate...', ['validated' => $validated]);
 
+        // ✅ Création du candidat
         $candidate = Candidate::create($validated);
 
         Log::info('Candidate created', $candidate->toArray());
@@ -66,7 +76,7 @@ class CandidateController extends Controller
         return response()->json([
             'message'   => 'Candidate created successfully',
             'candidate' => $candidate
-        ]);
+        ], 201);
 
     } catch (\Illuminate\Validation\ValidationException $e) {
         Log::error('Validation failed', [
@@ -89,6 +99,7 @@ class CandidateController extends Controller
         ], 500);
     }
 }
+
 
 public function show($id)
 {

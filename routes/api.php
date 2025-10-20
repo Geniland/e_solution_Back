@@ -39,16 +39,17 @@ Route::get('/votes/{candidate_id}', [VoteController::class, 'showVotesForCandida
 
 // Les routes de paiement (selon besoin, tu peux aussi les protéger)
 Route::post('/vote-payments/initiate', [VotePaymentController::class, 'initiateVotePayment']);
-Route::post('/vote-payments/callback', [VotePaymentController::class, 'handleVotePaymentCallback'])
-    ->name('api.votes.callback');
-    
+Route::get('/vote-payments/callback', [VotePaymentController::class, 'callbackPage'])
+    ->name('vote.callback');
 
-// Autoriser GET pour éviter l'erreur quand l’iframe est fermé
-Route::get('vote-payments/callback', function () {
-    return response()->json([
-        'message' => 'Callback GET reçu, mais seule la méthode POST est utilisée pour valider les paiements.'
-    ]);
-});
+
+Route::post('/vote-payments/confirm', [VotePaymentController::class, 'confirmVote'])
+    ->name('vote.confirm');
+
+// Route::post('/vote-payments/webhook', [VotePaymentController::class, 'handleVotePaymentWebhook']);
+
+
+
 
 
 Route::post('/status', [VotePaymentController::class, 'checkTransactionStatus']);

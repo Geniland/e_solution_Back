@@ -11,12 +11,22 @@ use Illuminate\Support\Facades\Storage;
 class CategoryController extends Controller
 {
   
+    // public function index()
+    // {
+    //     // return Category::with('candidates')->get();
+    //     $categories = Category::with('candidates')->get();
+    // return response()->json($categories);
+    // }
+
     public function index()
-    {
-        // return Category::with('candidates')->get();
-        $categories = Category::with('candidates')->get();
+{
+    $categories = Category::with(['candidates' => function($query) {
+        $query->withCount('votes'); // ✅ Ajoute votes_count
+    }])->get();
+
     return response()->json($categories);
-    }
+}
+
 
     public function store(Request $request)
     {
