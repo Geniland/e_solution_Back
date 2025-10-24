@@ -10,7 +10,7 @@ class VotePayment extends Model
 {
     protected $fillable = [
          'amount', 'visitor_token','candidate_id',
-        'payment_status', 'transaction_reference', 'network','ip_address'
+        'payment_status', 'transaction_reference', 'network','ip_address','votes',
     ];
 
     public function vote()

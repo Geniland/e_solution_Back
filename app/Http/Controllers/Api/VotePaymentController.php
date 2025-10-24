@@ -67,15 +67,27 @@ class VotePaymentController extends Controller
             $paymentUrl = $transaction->generateToken()->url;
             $transactionId = $transaction->id;
 
+            // VotePayment::create([
+            //     'amount'                => $amount,
+            //     'candidate_id'          => $candidate->id,
+            //     'payment_status'        => 'pending',
+            //     'transaction_reference' => $transactionId,
+            //     'network'               => 'FedaPay',
+            //     'visitor_token'         => $validated['visitor_token'] ?? null,
+            //     'ip_address'            => $request->ip(),
+            // ]);
+
             VotePayment::create([
-                'amount'                => $amount,
-                'candidate_id'          => $candidate->id,
-                'payment_status'        => 'pending',
+                'amount' => $amount,
+                'votes' => $votes, // 🔥 On sauvegarde le nombre de votes achetés ici
+                'candidate_id' => $candidate->id,
+                'payment_status' => 'pending',
                 'transaction_reference' => $transactionId,
-                'network'               => 'FedaPay',
-                'visitor_token'         => $validated['visitor_token'] ?? null,
-                'ip_address'            => $request->ip(),
+                'network' => 'FedaPay',
+                'visitor_token' => $validated['visitor_token'] ?? null,
+                'ip_address' => $request->ip(),
             ]);
+
 
             return response()->json([
                 'success' => true,
@@ -122,53 +134,109 @@ class VotePaymentController extends Controller
     /**
      * Confirmation manuelle du vote (POST via bouton sur la page callback)
      */
+    // public function confirmVote(Request $request): JsonResponse
+    // {
+    //     $validated = $request->validate([
+    //         'transaction_id' => 'required|string',
+    //     ]);
+
+    //     $txId = $validated['transaction_id'];
+
+    //     // Vérification du statut auprès de FedaPay
+    //     $statusResponse = $this->verifyTransactionStatus($txId);
+    //     $transaction = $statusResponse['transaction'] ?? null;
+
+    //     if (!$transaction || strtolower($transaction['status']) !== 'approved') {
+    //         return response()->json(['error' => 'Transaction non confirmée.'], 400);
+    //     }
+
+    //     $payment = VotePayment::where('transaction_reference', $txId)->first();
+    //     if (!$payment) {
+    //         return response()->json(['error' => 'Transaction inconnue.'], 404);
+    //     }
+
+    //     $candidate = Candidate::find($payment->candidate_id);
+    //     if (!$candidate) {
+    //         return response()->json(['error' => 'Candidat introuvable'], 500);
+    //     }
+
+    //     $vote = Vote::create([
+    //         'candidate_id'  => $candidate->id,
+    //         'category_id'   => $candidate->category_id,
+    //         'user_id'       => auth()->check() ? auth()->id() : null,
+    //         'visitor_token' => $payment->visitor_token,
+    //         'ip_address'    => $payment->ip_address,
+    //     ]);
+
+    //     $payment->update(['payment_status' => 'approved']);
+
+    //     return response()->json([
+    //         'success'   => true,
+    //         'message'   => 'Vote enregistré avec succès.',
+    //         'candidate' => $candidate->first_name . ' ' . $candidate->last_name,
+    //         'vote_id'   => $vote->id,
+    //     ]);
+    // }
+
+    /**
+     * Vérifie le statut d'une transaction FedaPay.
+     */
+
+
     public function confirmVote(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'transaction_id' => 'required|string',
-        ]);
+{
+    $validated = $request->validate([
+        'transaction_id' => 'required|string',
+    ]);
 
-        $txId = $validated['transaction_id'];
+    $txId = $validated['transaction_id'];
 
-        // Vérification du statut auprès de FedaPay
-        $statusResponse = $this->verifyTransactionStatus($txId);
-        $transaction = $statusResponse['transaction'] ?? null;
+    // 1️⃣ Vérifier le statut sur FedaPay
+    $statusResponse = $this->verifyTransactionStatus($txId);
+    $transaction = $statusResponse['transaction'] ?? null;
 
-        if (!$transaction || strtolower($transaction['status']) !== 'approved') {
-            return response()->json(['error' => 'Transaction non confirmée.'], 400);
-        }
+    if (!$transaction || strtolower($transaction['status']) !== 'approved') {
+        return response()->json(['error' => 'Transaction non confirmée.'], 400);
+    }
 
-        $payment = VotePayment::where('transaction_reference', $txId)->first();
-        if (!$payment) {
-            return response()->json(['error' => 'Transaction inconnue.'], 404);
-        }
+    // 2️⃣ Récupérer le paiement local
+    $payment = VotePayment::where('transaction_reference', $txId)->first();
+    if (!$payment) {
+        return response()->json(['error' => 'Transaction inconnue.'], 404);
+    }
 
-        $candidate = Candidate::find($payment->candidate_id);
-        if (!$candidate) {
-            return response()->json(['error' => 'Candidat introuvable'], 500);
-        }
+    // 3️⃣ Récupérer le candidat
+    $candidate = Candidate::find($payment->candidate_id);
+    if (!$candidate) {
+        return response()->json(['error' => 'Candidat introuvable'], 500);
+    }
 
-        $vote = Vote::create([
+    // 4️⃣ Stocker le nombre de votes à créer
+    $votesCount = $payment->votes ?? 1;
+
+    // 5️⃣ Boucle pour créer plusieurs votes
+    $createdVotes = 0;
+    for ($i = 0; $i < $votesCount; $i++) {
+        Vote::create([
             'candidate_id'  => $candidate->id,
             'category_id'   => $candidate->category_id,
             'user_id'       => auth()->check() ? auth()->id() : null,
             'visitor_token' => $payment->visitor_token,
             'ip_address'    => $payment->ip_address,
         ]);
-
-        $payment->update(['payment_status' => 'approved']);
-
-        return response()->json([
-            'success'   => true,
-            'message'   => 'Vote enregistré avec succès.',
-            'candidate' => $candidate->first_name . ' ' . $candidate->last_name,
-            'vote_id'   => $vote->id,
-        ]);
+        $createdVotes++;
     }
 
-    /**
-     * Vérifie le statut d'une transaction FedaPay.
-     */
+    // 6️⃣ Mettre à jour le paiement
+    $payment->update(['payment_status' => 'approved']);
+
+    return response()->json([
+        'success'   => true,
+        'message'   => "✅ {$createdVotes} vote(s) enregistré(s) avec succès.",
+        'candidate' => $candidate->first_name . ' ' . $candidate->last_name,
+    ]);
+}
+
    private function verifyTransactionStatus(string $txId): array
 {
     $client = new Client();
